@@ -1,0 +1,265 @@
+﻿<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8" />
+    <title>EEG Analyzer</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        nav {
+            background-color: #2c3e50;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+            nav .menu a {
+                color: white;
+                text-decoration: none;
+                margin-right: 20px;
+                font-weight: bold;
+            }
+
+                nav .menu a:hover {
+                    text-decoration: underline;
+                }
+
+            nav .right a {
+                color: white;
+                text-decoration: none;
+                font-weight: bold;
+            }
+
+        h1 {
+            padding: 20px;
+            margin: 0;
+            background-color: #ecf0f1;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px 15px;
+            border: none;
+            background-color: #3498db;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+            button:hover {
+                background-color: #2980b9;
+            }
+
+        select {
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Навигационное меню -->
+    <nav>
+        <div class="menu">
+            <a href="/eeg">Nowe badanie</a>
+            <a href="/history">Historia</a>
+            <a href="/visualization">Wizualizacja</a>
+        </div>
+        <div class="right">
+            <a href="/login" id="logoutLink">Wyloguj</a>
+        </div>
+    </nav>
+
+    <h1>EEG WebNN Analyzer</h1>
+
+    <div class="container">
+        <div>
+            <button id="startBtn">Start EEG</button>
+            <button id="stopBtn">Stop</button>
+        </div>
+        <div>
+            <button id="showHistoryBtn">Pokaż historię</button>
+            <button id="exportJsonBtn">Eksportuj JSON</button>
+            <button id="exportCsvBtn">Eksportuj CSV</button>
+            <button id="exportPdfBtn">Eksportuj PDF</button>
+            <input type="file" id="eegFileInput" accept=".csv,.json" />
+        </div>
+        <p id="status">Czekam...</p>
+
+        <canvas id="eegChart" width="600" height="200"></canvas>
+
+        <div id="filters" style="margin-top: 1rem;">
+            <label>
+                Sortuj według:
+                <select id="sortSelect">
+                    <option value="timestamp_desc">Czas (najnowsze)</option>
+                    <option value="timestamp_asc">Czas (najstarsze)</option>
+                    <option value="focus_desc">Focus malejąco</option>
+                    <option value="focus_asc">Focus rosnąco</option>
+                    <option value="relax_desc">Relax malejąco</option>
+                    <option value="relax_asc">Relax rosnąco</option>
+                </select>
+            </label>
+            <button id="applyFiltersBtn">Zastosuj</button>
+        </div>
+
+        <div id="historyContainer"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="/static/app.js"></script>
+    <script>
+        async function getUserHistory() {
+            const username = localStorage.getItem("username");
+            if (!username) {
+                console.error("User is not logged in");
+                return [];
+            }
+
+            try {
+                const response = await fetch(`http://localhost:8000/history/${username}`);
+                if (!response.ok) {
+                    throw new Error("Błąd przy pobieraniu historii");
+                }
+                return await response.json();
+            } catch (err) {
+                console.error("Błąd:", err);
+                return [];
+            }
+        }
+
+        function sortHistory(history, sortBy) {
+            const compare = {
+                timestamp_asc: (a, b) => new Date(a.timestamp) - new Date(b.timestamp),
+                timestamp_desc: (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+                focus_asc: (a, b) => a.focus - b.focus,
+                focus_desc: (a, b) => b.focus - a.focus,
+                relax_asc: (a, b) => a.relax - b.relax,
+                relax_desc: (a, b) => b.relax - a.relax,
+            };
+            return history.slice().sort(compare[sortBy]);
+        }
+
+        function download(filename, text) {
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+            element.setAttribute('download', filename);
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            async function getAllEntriesSorted(sortBy) {
+                const sessions = await getUserHistory();
+                let allEntries = [];
+                sessions.forEach(session => {
+                    allEntries = allEntries.concat(session.entries);
+                });
+                return sortHistory(allEntries, sortBy);
+            }
+
+            document.getElementById("showHistoryBtn").addEventListener("click", async () => {
+                const sortBy = document.getElementById("sortSelect").value;
+                const history = await getAllEntriesSorted(sortBy);
+                const container = document.getElementById("historyContainer");
+                container.innerHTML = "";
+
+                if (history.length === 0) {
+                    container.textContent = "Brak historii.";
+                    return;
+                }
+
+                const ul = document.createElement("ul");
+                history.forEach(entry => {
+                    const dateStr = new Date(entry.timestamp).toLocaleString();
+                    const result = entry.result || "Brak";
+                    const focus = entry.focus !== undefined ? entry.focus : "Brak";
+                    const relax = entry.relax !== undefined ? entry.relax : "Brak";
+
+                    const li = document.createElement("li");
+                    li.textContent = `Czas: ${dateStr}, Wynik: ${result}, Focus: ${focus}, Relax: ${relax}`;
+                    ul.appendChild(li);
+                });
+                container.appendChild(ul);
+            });
+
+            document.getElementById("applyFiltersBtn").addEventListener("click", async () => {
+                const sortBy = document.getElementById("sortSelect").value;
+                const history = await getAllEntriesSorted(sortBy);
+                const container = document.getElementById("historyContainer");
+                container.innerHTML = "";
+
+                if (history.length === 0) {
+                    container.textContent = "Brak historii.";
+                    return;
+                }
+
+                const ul = document.createElement("ul");
+                history.forEach(entry => {
+                    const dateStr = new Date(entry.timestamp).toLocaleString();
+                    const result = entry.result || "Brak";
+                    const focus = entry.focus !== undefined ? entry.focus : "Brak";
+                    const relax = entry.relax !== undefined ? entry.relax : "Brak";
+
+                    const li = document.createElement("li");
+                    li.textContent = `Czas: ${dateStr}, Wynik: ${result}, Focus: ${focus}, Relax: ${relax}`;
+                    ul.appendChild(li);
+                });
+                container.appendChild(ul);
+            });
+
+            document.getElementById("logoutLink").addEventListener("click", () => {
+                localStorage.removeItem("username");
+            });
+
+            document.getElementById("exportJsonBtn").addEventListener("click", async () => {
+                const sortBy = document.getElementById("sortSelect").value;
+                const history = await getAllEntriesSorted(sortBy);
+                if (history.length === 0) {
+                    alert("Brak danych do eksportu");
+                    return;
+                }
+                const jsonStr = JSON.stringify(history, null, 2);
+                download("eeg_history.json", jsonStr);
+            });
+
+            document.getElementById("exportCsvBtn").addEventListener("click", async () => {
+                const sortBy = document.getElementById("sortSelect").value;
+                const history = await getAllEntriesSorted(sortBy);
+                if (history.length === 0) {
+                    alert("Brak danych do eksportu");
+                    return;
+                }
+                const header = ["timestamp", "result", "focus", "relax"];
+                const csvRows = [
+                    header.join(","),
+                    ...history.map(entry => [
+                        `"${entry.timestamp}"`,
+                        `"${entry.result || ""}"`,
+                        entry.focus ?? "",
+                        entry.relax ?? ""
+                    ].join(","))
+                ];
+                download("eeg_history.csv", csvRows.join("\n"));
+            });
+
+            document.getElementById("exportPdfBtn").addEventListener("click", () => {
+                const username = localStorage.getItem("username");
+                if (!username) return alert("Nie jesteś zalogowany");
+                window.open(`http://localhost:8000/export/pdf/${username}`, "_blank");
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,3 +1,2 @@
-kimon:123
-kimon:123
-luna:5454235122353467
+kimon:$2b$12$vRAhkl1CsXO5Z9g.PXQZpuwn32ccM/e9.wer5mV5Gxnmo/2x8LjOq
+kim:$2b$12$sK.0c5Jv0202xdLkc/tn0eUVcHVeovlxtSTopRTH86nKJ9chTHRfq

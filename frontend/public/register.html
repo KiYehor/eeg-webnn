@@ -47,10 +47,10 @@
                 });
 
                 if (!response.ok) throw new Error(await response.text());
-                alert("Регистрация успешна!");
+                alert("Registration successful!");
                 window.location.href = "login";  // Перенаправление на страницу входа
             } catch (error) {
-                alert(`Ошибка: ${error.message}`);
+                alert(`Error: ${error.message}`);
             }
         });
     </script>

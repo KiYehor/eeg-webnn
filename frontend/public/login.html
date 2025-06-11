@@ -48,9 +48,15 @@
                 });
 
                 const result = await response.json();
-                alert(result.message);
+
+                if (result.message === "Login successful") {
+                    localStorage.setItem('username', username); //  сохраняем пользователя
+                    window.location.href = "eeg"; // переходим к анализу
+                } else {
+                    alert(result.message);
+                }
             } catch (error) {
-                alert("Login failed");
+                alert("Login failed: " + error.message);
             }
         });
     </script>

@@ -1,0 +1,227 @@
+﻿<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8" />
+    <title>Historia EEG</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+
+        nav {
+            background-color: #2c3e50;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+            nav .menu a {
+                color: white;
+                text-decoration: none;
+                margin-right: 20px;
+                font-weight: bold;
+            }
+
+                nav .menu a:hover {
+                    text-decoration: underline;
+                }
+
+            nav .right a {
+                color: white;
+                text-decoration: none;
+                font-weight: bold;
+            }
+
+        h1 {
+            padding: 20px;
+            margin: 0;
+            background-color: #ecf0f1;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        .session {
+            background-color: white;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .session-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .session-buttons button {
+            margin: 5px 5px 0 0;
+            padding: 8px 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+            .session-buttons button:hover {
+                background-color: #2980b9;
+            }
+
+        #filters {
+            margin: 20px 0;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="menu">
+            <a href="/eeg">Nowe badanie</a>
+            <a href="/history">Historia</a>
+            <a href="/visualization">Wizualizacja</a>
+        </div>
+        <div class="right">
+            <a href="/login" id="logoutLink">Wyloguj</a>
+        </div>
+    </nav>
+
+    <h1>Historia badań EEG</h1>
+
+    <div class="container">
+        <div id="filters">
+            <label>
+                Sortuj według:
+                <select id="sortSelect">
+                    <option value="timestamp_desc">Czas (najnowsze)</option>
+                    <option value="timestamp_asc">Czas (najstarsze)</option>
+                    <option value="focus_desc">Focus malejąco</option>
+                    <option value="focus_asc">Focus rosnąco</option>
+                    <option value="relax_desc">Relax malejąco</option>
+                    <option value="relax_asc">Relax rosnąco</option>
+                </select>
+            </label>
+            <button id="applyFiltersBtn">Zastosuj</button>
+        </div>
+
+        <div id="historyContainer"></div>
+    </div>
+
+    <script>
+        async function getUserHistory() {
+            const username = localStorage.getItem("username");
+            if (!username) return [];
+
+            try {
+                const res = await fetch(`http://localhost:8000/history/${username}`);
+                return await res.json();
+            } catch (err) {
+                console.error("Błąd pobierania historii:", err);
+                return [];
+            }
+        }
+
+        function sortHistory(entries, sortBy) {
+            const compare = {
+                timestamp_asc: (a, b) => new Date(a.timestamp) - new Date(b.timestamp),
+                timestamp_desc: (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+                focus_asc: (a, b) => (a.focus ?? 0) - (b.focus ?? 0),
+                focus_desc: (a, b) => (b.focus ?? 0) - (a.focus ?? 0),
+                relax_asc: (a, b) => (a.relax ?? 0) - (b.relax ?? 0),
+                relax_desc: (a, b) => (b.relax ?? 0) - (a.relax ?? 0),
+            };
+            return entries.slice().sort(compare[sortBy]);
+        }
+
+        function download(filename, content) {
+            const a = document.createElement('a');
+            a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function renderHistory(sessions, sortBy) {
+            const container = document.getElementById("historyContainer");
+            container.innerHTML = "";
+
+            if (!sessions.length) {
+                container.textContent = "Brak historii.";
+                return;
+            }
+
+            sessions.forEach((session, i) => {
+                const div = document.createElement("div");
+                div.className = "session";
+
+                const header = document.createElement("div");
+                header.className = "session-header";
+                header.textContent = `Sesja ${i + 1} — Od: ${new Date(session.start).toLocaleString()} Do: ${new Date(session.end).toLocaleString()}`;
+
+                const list = document.createElement("ul");
+                const sorted = sortHistory(session.entries || [], sortBy);
+
+                sorted.forEach(entry => {
+                    const li = document.createElement("li");
+                    li.textContent = `Czas: ${new Date(entry.timestamp).toLocaleString()}, Wynik: ${entry.result}, Focus: ${entry.focus}, Relax: ${entry.relax}`;
+                    list.appendChild(li);
+                });
+
+                const buttons = document.createElement("div");
+                buttons.className = "session-buttons";
+
+                const exportJson = document.createElement("button");
+                exportJson.textContent = "Eksportuj JSON";
+                exportJson.onclick = () => {
+                    download(`session_${i + 1}.json`, JSON.stringify(session.entries, null, 2));
+                };
+
+                const exportCsv = document.createElement("button");
+                exportCsv.textContent = "Eksportuj CSV";
+                exportCsv.onclick = () => {
+                    const rows = session.entries.map(e =>
+                        [`"${e.timestamp}"`, `"${e.result}"`, e.focus, e.relax].join(",")
+                    );
+                    const csv = ["timestamp,result,focus,relax", ...rows].join("\n");
+                    download(`session_${i + 1}.csv`, csv);
+                };
+
+                buttons.append(exportJson, exportCsv);
+
+                div.append(header, list, buttons);
+                container.appendChild(div);
+            });
+        }
+
+        document.getElementById("applyFiltersBtn").onclick = async () => {
+            const sortBy = document.getElementById("sortSelect").value;
+            const history = await getUserHistory();
+            renderHistory(history, sortBy);
+        };
+
+        document.getElementById("logoutLink").onclick = () => {
+            localStorage.removeItem("username");
+        };
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            const sortBy = document.getElementById("sortSelect").value;
+            const history = await getUserHistory();
+            renderHistory(history, sortBy);
+        });
+    </script>
+</body>
+</html>
