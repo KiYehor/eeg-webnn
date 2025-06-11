@@ -17,7 +17,7 @@ print(f"Frontend path: {FRONTEND_DIR}")
 print(f"Files in frontend: {os.listdir(FRONTEND_DIR)}")
 
 # Раздаем статические файлы
-app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+app.mount("/static", StaticFiles(directory="frontend/public"), name="static")
 
 class User(BaseModel):
     username: str
